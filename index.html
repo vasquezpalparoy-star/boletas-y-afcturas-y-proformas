@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Boletas - Grafiplot Vasquez</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- html2pdf.js for generating A4 PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fef2f2',   // Red 50
+                            100: '#fee2e2',  // Red 100
+                            500: '#ef4444',  // Red 500
+                            600: '#dc2626',  // Red 600
+                            700: '#b91c1c',  // Red 700
+                            900: '#7f1d1d',  // Red 900
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        
+        /* Contenedor optimizado para tamaño A4 en pantalla y exportación */
+        #boleta-preview {
+            background-color: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            width: 794px; /* Ancho estándar de un A4 a 96 DPI */
+            min-height: 1090px; /* Alto proporcional para A4 */
+            padding: 45px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* Ocultar barra de desplazamiento horizontal del contenedor de previsualización */
+        .preview-container {
+            overflow-x: auto;
+        }
+
+        /* Estilos por defecto (Rojo corporativo solicitado para recuadros) */
+        .accent-bg {
+            background-color: #dc2626; /* Red 600 */
+        }
+        .accent-border {
+            border-color: #dc2626;
+        }
+        .accent-text {
+            color: #dc2626;
+        }
+        .accent-badge {
+            background-color: #dc2626;
+            color: white;
+        }
+        .table-header {
+            background-color: #1f2937; /* Gris oscuro neutro para cabecera de tabla */
+        }
+        
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                background-color: white;
+            }
+            #boleta-preview {
+                box-shadow: none;
+                width: 100%;
+                min-height: auto;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased h-screen flex flex-col">
+
+    <header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-3">
+                    <img src="https://grafiplotvasquez.lat/assets/grafiplot-logo-Dp8jzUuX.webp" alt="Grafiplot Logo" class="h-12 w-auto object-contain">
+                    <span class="font-bold text-lg text-gray-500 border-l pl-3 hidden sm:block">Panel de Facturación</span>
+                </div>
+                <div>
+                    <a href="https://sites.google.com/view/grafiplotvasquez/inicio" target="_blank" class="text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors">
+                        Ir al sitio web <i class="fas fa-external-link-alt ml-1"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-hidden h-full">
+        
+        <!-- PANEL IZQUIERDO: Formularios, XML y Verificación -->
+        <div class="w-full lg:w-[420px] flex flex-col gap-4 h-full overflow-y-auto pr-1 no-print shrink-0">
+            
+            <!-- Selector de Pestañas -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 shrink-0">
+                <div class="grid grid-cols-3 gap-1 bg-gray-100 rounded-lg p-1" role="tablist">
+                    <button id="tab-manual" class="py-2 px-2 rounded-md text-xs font-semibold bg-white text-gray-900 shadow-sm transition-all focus:outline-none" onclick="switchTab('manual')">
+                        <i class="fas fa-edit block text-center mb-1 text-base"></i> Crear
+                    </button>
+                    <button id="tab-sunat" class="py-2 px-2 rounded-md text-xs font-semibold text-gray-500 hover:text-gray-700 transition-all focus:outline-none" onclick="switchTab('sunat')">
+                        <i class="fas fa-file-code block text-center mb-1 text-base"></i> XML SUNAT
+                    </button>
+                    <button id="tab-validez" class="py-2 px-2 rounded-md text-xs font-semibold text-gray-500 hover:text-gray-700 transition-all focus:outline-none" onclick="switchTab('validez')">
+                        <i class="fas fa-shield-alt block text-center mb-1 text-base"></i> Validez
+                    </button>
+                </div>
+            </div>
+
+            <!-- Contenidos de las Pestañas -->
+            <div class="flex-grow">
+                
+                <!-- Pestaña 1: Crear Manual/Edición -->
+                <div id="section-manual" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-5 block">
+                    <div class="flex justify-between items-center border-b pb-3">
+                        <h2 class="text-base font-bold text-gray-800">Parámetros del Comprobante</h2>
+                        <span class="text-xs bg-red-100 px-2.5 py-1 rounded-full font-semibold text-brand-700">SIN IGV</span>
+                    </div>
+
+                    <!-- Tipo de Documento -->
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tipo de Documento</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button id="btn-type-boleta" onclick="setDocumentType('BOLETA')" class="py-2 px-3 text-xs font-bold border rounded-lg transition-all bg-brand-50 border-brand-500 text-brand-700">
+                                BOLETA
+                            </button>
+                            <button id="btn-type-factura" onclick="setDocumentType('FACTURA')" class="py-2 px-3 text-xs font-bold border rounded-lg transition-all bg-white border-gray-200 text-gray-600 hover:bg-gray-50">
+                                FACTURA
+                            </button>
+                            <button id="btn-type-proforma" onclick="setDocumentType('PROFORMA')" class="py-2 px-3 text-xs font-bold border rounded-lg transition-all bg-white border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-brand-600 inline-block animate-pulse"></span> PROFORMA
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Datos correlativos -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Serie</label>
+                            <input type="text" id="docSerie" class="w-full rounded-md border-gray-300 shadow-sm focus:ring-1 focus:ring-brand-500 text-xs border p-2 font-mono uppercase" placeholder="B001" value="B001">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Correlativo</label>
+                            <input type="text" id="docCorrelative" class="w-full rounded-md border-gray-300 shadow-sm focus:ring-1 focus:ring-brand-500 text-xs border p-2 font-mono" placeholder="00000001" value="00000001">
+                        </div>
+                    </div>
+
+                    <!-- Datos del Cliente -->
+                    <div class="space-y-3 border-t pt-3">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Datos del Cliente</h3>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Nombre / Razón Social</label>
+                            <input type="text" id="clientName" class="w-full rounded-md border-gray-300 shadow-sm focus:ring-1 focus:ring-brand-500 text-xs border p-2" placeholder="Ej. Juan Perez" value="Cliente General">
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1" id="label-doc-identidad">DNI</label>
+                                <input type="text" id="clientDoc" class="w-full rounded-md border-gray-300 shadow-sm focus:ring-1 focus:ring-brand-500 text-xs border p-2" placeholder="8 dígitos" value="00000000">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">Fecha de Emisión</label>
+                                <input type="date" id="docDate" class="w-full rounded-md border-gray-300 shadow-sm focus:ring-1 focus:ring-brand-500 text-xs border p-2">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Dirección (Se guarda en XML, no se muestra en diseño)</label>
+                            <input type="text" id="clientAddress" class="w-full rounded-md border-gray-300 shadow-sm focus:ring-1 focus:ring-brand-500 text-xs border p-2" placeholder="Dirección del cliente" value="-">
+                        </div>
+                    </div>
+
+                    <!-- Moneda -->
+                    <div class="border-t pt-3">
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Moneda del Documento</label>
+                        <select id="docCurrency" onchange="updateCurrencySymbol()" class="w-full rounded-md border-gray-300 shadow-sm focus:ring-1 focus:ring-brand-500 text-xs border p-2">
+                            <option value="PEN" data-symbol="S/">Soles (S/)</option>
+                            <option value="USD" data-symbol="$">Dólares ($)</option>
+                            <option value="EUR" data-symbol="€">Euros (€)</option>
+                        </select>
+                    </div>
+
+                    <!-- Sección de Ítems -->
+                    <div class="space-y-3 border-t pt-3">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Productos / Servicios</h3>
+                            <button onclick="addItem()" class="text-[10px] bg-brand-50 text-brand-700 hover:bg-brand-100 px-2 py-1 rounded font-bold transition-colors border border-brand-200 uppercase">
+                                <i class="fas fa-plus mr-1"></i> Añadir Ítem
+                            </button>
+                        </div>
+                        
+                        <!-- Contenedor dinámico de filas -->
+                        <div id="itemsContainer" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                            <!-- Primera fila por defecto -->
+                            <div class="item-row flex items-start gap-1.5 bg-gray-50 p-2 rounded border border-gray-200 relative group">
+                                <div class="w-12 shrink-0">
+                                    <input type="number" class="item-qty w-full rounded border-gray-300 text-xs border p-1" value="1" min="1" onchange="updatePreview()">
+                                </div>
+                                <div class="flex-grow">
+                                    <input type="text" class="item-desc w-full rounded border-gray-300 text-xs border p-1" placeholder="Descripción" value="Servicios de Diseño e Impresión" oninput="updatePreview()">
+                                </div>
+                                <div class="w-20 shrink-0">
+                                    <input type="number" class="item-price w-full rounded border-gray-300 text-xs border p-1" value="150.00" step="0.01" min="0" onchange="updatePreview()">
+                                </div>
+                                <button onclick="removeItem(this)" class="text-red-400 hover:text-red-600 p-1 self-center" title="Eliminar">
+                                    <i class="fas fa-trash text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pestaña 2: Importar XML Real -->
+                <div id="section-sunat" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4 hidden">
+                    <h2 class="text-base font-bold text-gray-800 border-b pb-2">Importador de XML SUNAT</h2>
+                    
+                    <div class="bg-red-50 border-l-4 border-brand-600 p-3 rounded-r">
+                        <p class="text-[11px] text-brand-900 leading-relaxed">
+                            <i class="fas fa-info-circle mr-1 text-brand-600"></i>
+                            Sube el archivo <strong>XML</strong> que SUNAT provee. El sistema mantendrá estrictamente la serie y correlativo original del documento y lo adaptará a tu diseño de marca.
+                        </p>
+                    </div>
+
+                    <!-- Area de Carga -->
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition-colors cursor-pointer" onclick="document.getElementById('xml-file-upload').click()">
+                        <i class="fas fa-file-invoice text-3xl text-gray-400 mb-2"></i>
+                        <p class="text-xs text-gray-600 font-semibold mb-1">Selecciona el archivo XML de SUNAT</p>
+                        <p class="text-[10px] text-gray-400">Archivos con extensión .xml</p>
+                        <input id="xml-file-upload" type="file" class="hidden" accept=".xml" onchange="handleXMLUpload(this)">
+                    </div>
+
+                    <!-- Simulador de archivos rápidos -->
+                    <div class="pt-3 border-t">
+                        <span class="text-xs font-medium text-gray-500 block mb-2">Pruebas Rápidas (Simuladas):</span>
+                        <div class="space-y-1.5">
+                            <button onclick="loadSimulatedData(1)" class="w-full text-left px-3 py-1.5 text-xs text-gray-700 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 flex justify-between items-center">
+                                <span><i class="fas fa-receipt mr-1.5 text-brand-600"></i> Boleta Electrónica original de prueba</span>
+                                <i class="fas fa-arrow-right text-[10px]"></i>
+                            </button>
+                            <button onclick="loadSimulatedData(2)" class="w-full text-left px-3 py-1.5 text-xs text-gray-700 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 flex justify-between items-center">
+                                <span><i class="fas fa-file-invoice-dollar mr-1.5 text-brand-600"></i> Factura original en Dólares (USD)</span>
+                                <i class="fas fa-arrow-right text-[10px]"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pestaña 3: Validez de Comprobante -->
+                <div id="section-validez" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4 hidden">
+                    <h2 class="text-base font-bold text-gray-800 border-b pb-2">Validez y Verificación</h2>
+                    
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">Buscar Comprobante Emitido</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="searchDocNum" class="flex-grow rounded-md border-gray-300 shadow-sm focus:ring-1 focus:ring-brand-500 text-xs border p-2 font-mono uppercase" placeholder="Ej: B001-00000001">
+                            <button onclick="buscarComprobante()" class="bg-gray-800 text-white text-xs px-3 rounded hover:bg-gray-900 font-semibold">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Resultado de búsqueda -->
+                    <div id="searchResult" class="hidden p-3 rounded-lg border text-xs">
+                        <!-- Rellenado dinámicamente -->
+                    </div>
+                </div>
+
+            </div>
+            
+            <!-- Acciones Principales -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 shrink-0 flex flex-col gap-2 mt-auto">
+                <button onclick="generatePDF()" class="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 transition-colors uppercase tracking-wide">
+                    <i class="fas fa-file-pdf mr-2 text-sm"></i> Guardar como PDF A4
+                </button>
+                <button onclick="imprimirBoleta()" class="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-xs font-bold text-gray-700 bg-white hover:bg-gray-50 transition-colors uppercase">
+                    <i class="fas fa-print mr-2"></i> Imprimir Comprobante
+                </button>
+            </div>
+        </div>
+
+        <!-- PANEL DERECHO: Previsualización de Boleta en A4 -->
+        <div class="flex-grow bg-gray-500 rounded-xl p-4 lg:p-6 flex items-start justify-center overflow-auto preview-container">
+            
+            <!-- Lienzo de la boleta -->
+            <div id="boleta-preview" class="theme-boleta">
+                
+                <!-- Marca de agua de fondo -->
+                <div class="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none z-0">
+                    <img src="https://grafiplotvasquez.lat/assets/grafiplot-logo-Dp8jzUuX.webp" class="w-2/3">
+                </div>
+
+                <div class="relative z-10 flex flex-col justify-between h-full">
+                    
+                    <!-- CABECERA DE LA BOLETA -->
+                    <div>
+                        <div class="flex flex-col md:flex-row justify-between items-start border-b-2 accent-border pb-5 mb-5 gap-4">
+                            
+                            <!-- Logo y Datos de la Empresa -->
+                            <div class="w-full md:w-3/5 flex flex-col items-center md:items-start text-center md:text-left">
+                                <img src="https://grafiplotvasquez.lat/assets/grafiplot-logo-Dp8jzUuX.webp" alt="Grafiplot Logo" class="h-20 w-auto object-contain mb-3">
+                                <div class="space-y-0.5">
+                                    <p class="text-xs text-gray-600 font-medium"><i class="fas fa-map-marker-alt accent-text mr-1"></i> Av. Universitaria 606</p>
+                                    <p class="text-xs text-gray-500 pl-4">Frente a la puerta principal de la UNHEVAL</p>
+                                    <p class="text-xs text-gray-600 font-medium mt-0.5"><i class="fas fa-phone-alt accent-text mr-1"></i> Cel: 952 628 844</p>
+                                    <p class="text-xs text-gray-600 font-medium"><i class="fas fa-globe accent-text mr-1"></i> https://sites.google.com/view/grafiplotvasquez/inicio</p>
+                                </div>
+                            </div>
+
+                            <!-- Caja del RUC -->
+                            <div class="w-full md:w-2/5 max-w-sm">
+                                <div class="border-2 border-red-600 rounded-lg text-center p-3.5 bg-white accent-border">
+                                    <p class="font-bold text-lg tracking-wider text-red-600 accent-text">R.U.C. 10712451284</p>
+                                    <div class="accent-badge font-bold py-1.5 my-2 text-xs rounded uppercase tracking-widest" id="preview-doc-type-label">
+                                        BOLETA DE VENTA ELECTRÓNICA
+                                    </div>
+                                    <p class="font-bold font-mono text-base text-gray-800" id="preview-doc-number">B001 - 00000001</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- DATOS DEL CLIENTE (Simplificado sin dirección ni tipo de moneda en el lienzo) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-2.5 gap-x-6 text-xs mb-5 bg-red-50 p-4 rounded-md border border-red-200">
+                            <div class="flex sm:col-span-2">
+                                <span class="font-semibold w-24 shrink-0 text-red-800">Señor(es):</span>
+                                <span id="prev-client-name" class="flex-grow border-b border-red-200 font-semibold text-gray-800">Cliente General</span>
+                            </div>
+                            <div class="flex">
+                                <span id="prev-doc-ident-label" class="font-semibold w-24 shrink-0 text-red-800">DNI:</span>
+                                <span id="prev-client-doc" class="flex-grow border-b border-red-200 font-mono text-gray-800">00000000</span>
+                            </div>
+                            <div class="flex">
+                                <span class="font-semibold w-24 shrink-0 text-red-800">Fecha Emisión:</span>
+                                <span id="prev-date" class="flex-grow border-b border-red-200 text-gray-800">-</span>
+                            </div>
+                            
+                            <!-- Contenedores dinámicos (Se muestran solo al cargar XML) -->
+                            <div id="prev-address-container" class="flex sm:col-span-2 hidden">
+                                <span class="font-semibold w-24 shrink-0 text-red-800">Dirección:</span>
+                                <span id="prev-client-address" class="flex-grow border-b border-red-200 text-gray-800">-</span>
+                            </div>
+                            <div id="prev-currency-container" class="flex hidden">
+                                <span class="font-semibold w-24 shrink-0 text-red-800">Moneda:</span>
+                                <span id="prev-currency-label" class="flex-grow border-b border-red-200 text-gray-800 font-medium uppercase">SOLES</span>
+                            </div>
+                        </div>
+
+                        <!-- TABLA DE DETALLES -->
+                        <table class="w-full text-xs text-left mb-6">
+                            <thead class="table-header text-white">
+                                <tr>
+                                    <th class="py-2.5 px-3 text-center w-14 rounded-tl">Cant.</th>
+                                    <th class="py-2.5 px-3">Descripción / Detalle del servicio</th>
+                                    <th class="py-2.5 px-3 text-right w-24">P. Unit.</th>
+                                    <th class="py-2.5 px-3 text-right w-24 rounded-tr">Importe</th>
+                                </tr>
+                            </thead>
+                            <tbody id="prev-items-body" class="divide-y divide-gray-100 border-b border-gray-200">
+                                <!-- Filas dinámicas -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- TOTALES Y TEXTO EN LETRAS -->
+                    <div class="flex flex-col sm:flex-row justify-between items-end gap-4 mt-auto pt-4 border-t border-gray-100">
+                        
+                        <!-- Columna Izquierda: Importe en letras -->
+                        <div class="w-full sm:w-1/2 flex flex-col gap-3">
+                            <div>
+                                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">SON:</p>
+                                <p id="prev-amount-words" class="text-xs font-bold uppercase border-t border-b border-red-200 py-2 text-gray-800">
+                                    CIENTO CINCUENTA Y 00/100 SOLES
+                                </p>
+                            </div>
+                            <div id="legal-text-container" class="text-[10px] text-gray-500 leading-normal">
+                                <p class="font-bold uppercase mb-0.5 accent-text">Comprobante Sin IGV - Exonerado</p>
+                                <p>Representación impresa para control administrativo de Grafiplot Vásquez.</p>
+                            </div>
+                        </div>
+
+                        <!-- Columna Derecha: Cuadro de Totales -->
+                        <div class="w-full sm:w-64 border border-red-200 rounded-lg overflow-hidden shrink-0 shadow-sm bg-white">
+                            <div class="flex justify-between py-2 px-3 border-b border-gray-200 bg-gray-50">
+                                <span class="text-xs font-semibold text-gray-500">Operación Inafecta:</span>
+                                <span class="text-xs font-bold font-mono text-gray-700"><span class="curr-symbol">S/</span> <span id="prev-subtotal">0.00</span></span>
+                            </div>
+                            <div class="flex justify-between py-2 px-3 border-b border-gray-200 bg-gray-50">
+                                <span class="text-xs font-semibold text-gray-500">I.G.V. (0%):</span>
+                                <span class="text-xs font-bold font-mono text-gray-400"><span class="curr-symbol">S/</span> 0.00</span>
+                            </div>
+                            <div class="flex justify-between py-2.5 px-3 accent-bg text-white font-bold rounded-b">
+                                <span class="text-xs tracking-wider">TOTAL NETO:</span>
+                                <span class="font-mono text-sm"><span class="curr-symbol">S/</span> <span id="prev-total">0.00</span></span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Scripts de Lógica Integrada -->
+    <script>
+        // Estado Global de la Aplicación
+        let docType = 'BOLETA'; // BOLETA, FACTURA, PROFORMA
+        let currencySymbol = 'S/';
+        let currencyText = 'SOLES';
+        let currencyTextSingular = 'SOL';
+        let isImportedXML = false; // Bandera para saber si se generó por XML
+
+        // Al iniciar la aplicación
+        window.onload = function() {
+            document.getElementById('docDate').valueAsDate = new Date();
+            updateCurrencySymbol();
+            updatePreview();
+        };
+
+        // Cambiar entre Pestañas
+        function switchTab(tabId) {
+            const tabs = ['manual', 'sunat', 'validez'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                const panel = document.getElementById(`section-${t}`);
+                if (t === tabId) {
+                    btn.className = 'py-2 px-2 rounded-md text-xs font-semibold bg-white text-gray-900 shadow-sm transition-all focus:outline-none';
+                    panel.style.display = 'block';
+                } else {
+                    btn.className = 'py-2 px-2 rounded-md text-xs font-semibold text-gray-500 hover:text-gray-700 transition-all focus:outline-none';
+                    panel.style.display = 'none';
+                }
+            });
+        }
+
+        // Cambiar Tipo de Documento (Boleta, Factura, Proforma)
+        function setDocumentType(type, keepNumbers = false) {
+            docType = type;
+            if (!keepNumbers) {
+                isImportedXML = false; // Vuelve a mostrar el texto si se resetea a manual
+            }
+            
+            const buttons = {
+                'BOLETA': document.getElementById('btn-type-boleta'),
+                'FACTURA': document.getElementById('btn-type-factura'),
+                'PROFORMA': document.getElementById('btn-type-proforma')
+            };
+
+            // Resetear todos los botones de tipo
+            Object.keys(buttons).forEach(k => {
+                buttons[k].className = 'py-2 px-3 text-xs font-bold border rounded-lg transition-all bg-white border-gray-200 text-gray-600 hover:bg-gray-50';
+            });
+
+            // Activar botón seleccionado
+            if (type === 'BOLETA') {
+                buttons['BOLETA'].className = 'py-2 px-3 text-xs font-bold border rounded-lg transition-all bg-brand-50 border-brand-500 text-brand-700';
+                if (!keepNumbers) {
+                    document.getElementById('docSerie').value = 'B001';
+                    document.getElementById('docCorrelative').value = '00000001';
+                }
+                document.getElementById('label-doc-identidad').textContent = 'DNI';
+                document.getElementById('clientDoc').placeholder = '8 dígitos';
+                document.getElementById('preview-doc-type-label').textContent = 'BOLETA DE VENTA ELECTRÓNICA';
+            } else if (type === 'FACTURA') {
+                buttons['FACTURA'].className = 'py-2 px-3 text-xs font-bold border rounded-lg transition-all bg-brand-50 border-brand-500 text-brand-700';
+                if (!keepNumbers) {
+                    document.getElementById('docSerie').value = 'F001';
+                    document.getElementById('docCorrelative').value = '00000001';
+                }
+                document.getElementById('label-doc-identidad').textContent = 'RUC';
+                document.getElementById('clientDoc').placeholder = '11 dígitos';
+                document.getElementById('preview-doc-type-label').textContent = 'FACTURA ELECTRÓNICA';
+            } else if (type === 'PROFORMA') {
+                buttons['PROFORMA'].className = 'py-2 px-3 text-xs font-bold border rounded-lg transition-all bg-brand-100 border-brand-500 text-brand-700';
+                if (!keepNumbers) {
+                    document.getElementById('docSerie').value = 'PROF';
+                    document.getElementById('docCorrelative').value = '00000001';
+                }
+                document.getElementById('label-doc-identidad').textContent = 'DNI / RUC';
+                document.getElementById('clientDoc').placeholder = 'Identificación';
+                document.getElementById('preview-doc-type-label').textContent = 'PROFORMA DE SERVICIO';
+            }
+
+            updatePreview();
+        }
+
+        // Agregar fila de Ítem
+        function addItem(qty = 1, desc = '', price = 0) {
+            const container = document.getElementById('itemsContainer');
+            const row = document.createElement('div');
+            row.className = 'item-row flex items-start gap-1.5 bg-gray-50 p-2 rounded border border-gray-200 relative group';
+            
+            row.innerHTML = `
+                <div class="w-12 shrink-0">
+                    <input type="number" class="item-qty w-full rounded border-gray-300 text-xs border p-1" value="${qty}" min="1" onchange="updatePreview()">
+                </div>
+                <div class="flex-grow">
+                    <input type="text" class="item-desc w-full rounded border-gray-300 text-xs border p-1" placeholder="Descripción" value="${desc}" oninput="updatePreview()">
+                </div>
+                <div class="w-20 shrink-0">
+                    <input type="number" class="item-price w-full rounded border-gray-300 text-xs border p-1" value="${price.toFixed(2)}" step="0.01" min="0" onchange="updatePreview()">
+                </div>
+                <button onclick="removeItem(this)" class="text-red-400 hover:text-red-600 p-1 self-center" title="Eliminar">
+                    <i class="fas fa-trash text-xs"></i>
+                </button>
+            `;
+            container.appendChild(row);
+            updatePreview();
+        }
+
+        // Eliminar fila de Ítem
+        function removeItem(btn) {
+            const container = document.getElementById('itemsContainer');
+            if (container.children.length > 1) {
+                btn.closest('.item-row').remove();
+                updatePreview();
+            } else {
+                alert("Debe mantener al menos un producto/servicio en el comprobante.");
+            }
+        }
+
+        // Cambiar el Símbolo de Moneda
+        function updateCurrencySymbol() {
+            const select = document.getElementById('docCurrency');
+            const selectedOpt = select.options[select.selectedIndex];
+            currencySymbol = selectedOpt.getAttribute('data-symbol') || 'S/';
+            
+            const currVal = select.value;
+            if (currVal === 'PEN') {
+                currencyText = 'SOLES';
+                currencyTextSingular = 'SOL';
+            } else if (currVal === 'USD') {
+                currencyText = 'DÓLARES';
+                currencyTextSingular = 'DÓLAR';
+            } else if (currVal === 'EUR') {
+                currencyText = 'EUROS';
+                currencyTextSingular = 'EURO';
+            }
+
+            // Actualizar en el lienzo de la boleta
+            document.querySelectorAll('.curr-symbol').forEach(el => {
+                el.textContent = currencySymbol;
+            });
+            updatePreview();
+        }
+
+        // Actualizar vista previa
+        function updatePreview() {
+            // Actualizar campos de cabecera y cliente
+            const serie = document.getElementById('docSerie').value.trim() || 'B001';
+            const correlativo = document.getElementById('docCorrelative').value.trim().padStart(8, '0');
+            const docNumStr = `${serie} - ${correlativo}`;
+            
+            document.getElementById('preview-doc-number').textContent = docNumStr;
+            document.getElementById('prev-client-name').textContent = document.getElementById('clientName').value || 'Cliente General';
+            document.getElementById('prev-client-doc').textContent = document.getElementById('clientDoc').value || '-';
+            
+            // Tipo de documento de identidad del cliente
+            const docLabel = document.getElementById('label-doc-identidad').textContent;
+            document.getElementById('prev-doc-ident-label').textContent = docLabel + ':';
+
+            // Fecha
+            const dateVal = document.getElementById('docDate').value;
+            if(dateVal) {
+                const [year, month, day] = dateVal.split('-');
+                document.getElementById('prev-date').textContent = `${day}/${month}/${year}`;
+            } else {
+                document.getElementById('prev-date').textContent = '-';
+            }
+
+            // Mostrar u ocultar Dirección y Moneda (Visible completo solo en XML)
+            const addressEl = document.getElementById('prev-client-address');
+            if(addressEl) addressEl.textContent = document.getElementById('clientAddress').value || '-';
+            
+            const currencyLabelEl = document.getElementById('prev-currency-label');
+            if(currencyLabelEl) currencyLabelEl.textContent = currencyText;
+
+            const addrContainer = document.getElementById('prev-address-container');
+            const currContainer = document.getElementById('prev-currency-container');
+            
+            if(addrContainer && currContainer) {
+                if(isImportedXML) {
+                    addrContainer.classList.remove('hidden');
+                    currContainer.classList.remove('hidden');
+                } else {
+                    addrContainer.classList.add('hidden');
+                    currContainer.classList.add('hidden');
+                }
+            }
+
+            // Renderizar filas e items
+            const itemRows = document.querySelectorAll('.item-row');
+            const tbody = document.getElementById('prev-items-body');
+            tbody.innerHTML = '';
+            
+            let total = 0;
+
+            itemRows.forEach(row => {
+                const qty = parseFloat(row.querySelector('.item-qty').value) || 0;
+                const desc = row.querySelector('.item-desc').value || '';
+                const price = parseFloat(row.querySelector('.item-price').value) || 0;
+                const amount = qty * price;
+                
+                total += amount;
+
+                if (desc.trim() !== '' || amount > 0) {
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-gray-100 last:border-0';
+                    tr.innerHTML = `
+                        <td class="py-2.5 px-3 text-center align-top font-medium">${qty}</td>
+                        <td class="py-2.5 px-3 align-top whitespace-pre-wrap text-gray-700">${desc}</td>
+                        <td class="py-2.5 px-3 text-right align-top font-mono">${price.toFixed(2)}</td>
+                        <td class="py-2.5 px-3 text-right align-top font-mono font-semibold">${amount.toFixed(2)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            });
+
+            if (tbody.innerHTML === '') {
+                 tbody.innerHTML = `
+                    <tr>
+                        <td class="py-3 px-3 text-center text-gray-400">-</td>
+                        <td class="py-3 px-3 text-gray-400">Sin detalles registrados</td>
+                        <td class="py-3 px-3 text-right text-gray-400">-</td>
+                        <td class="py-3 px-3 text-right text-gray-400">-</td>
+                    </tr>
+                `;
+            }
+
+            // SIN IGV: Subtotal es idéntico al Total, IGV es 0.00
+            document.getElementById('prev-subtotal').textContent = total.toFixed(2);
+            document.getElementById('prev-total').textContent = total.toFixed(2);
+
+            // Importe en Letras
+            document.getElementById('prev-amount-words').textContent = numeroALetras(total, {
+                plural: currencyText,
+                singular: currencyTextSingular,
+                centPlural: 'CÉNTIMOS',
+                centSingular: 'CÉNTIMO'
+            });
+
+            // Mostrar u ocultar texto legal dependiendo de si es XML o Manual
+            const legalTextContainer = document.getElementById('legal-text-container');
+            if (legalTextContainer) {
+                legalTextContainer.style.display = isImportedXML ? 'none' : 'block';
+            }
+        }
+
+        // Guardar Comprobante en la Base de Datos Local (localStorage)
+        function guardarComprobanteLocal() {
+            const serie = document.getElementById('docSerie').value.trim().toUpperCase() || 'B001';
+            const correlativo = document.getElementById('docCorrelative').value.trim().padStart(8, '0');
+            const key = `${serie}-${correlativo}`;
+            
+            const itemRows = document.querySelectorAll('.item-row');
+            const items = [];
+            let total = 0;
+            itemRows.forEach(row => {
+                const qty = parseFloat(row.querySelector('.item-qty').value) || 0;
+                const desc = row.querySelector('.item-desc').value || '';
+                const price = parseFloat(row.querySelector('.item-price').value) || 0;
+                if(desc) {
+                    items.push({ qty, desc, price });
+                    total += (qty * price);
+                }
+            });
+
+            const docData = {
+                num: key,
+                tipo: docType,
+                cliente: document.getElementById('clientName').value || 'Cliente General',
+                doc: document.getElementById('clientDoc').value || '-',
+                direccion: document.getElementById('clientAddress').value || '-',
+                fecha: document.getElementById('docDate').value,
+                moneda: document.getElementById('docCurrency').value,
+                items: items,
+                total: total,
+                isXML: isImportedXML
+            };
+
+            // Obtener base de datos local
+            let localDb = JSON.parse(localStorage.getItem('grafiplot_comprobantes') || '{}');
+            localDb[key] = docData;
+            localStorage.setItem('grafiplot_comprobantes', JSON.stringify(localDb));
+        }
+
+        // Imprimir comprobante
+        function imprimirBoleta() {
+            guardarComprobanteLocal(); // Guardar registro antes de imprimir
+            window.print();
+        }
+
+        // Generar y descargar PDF A4 optimizado
+        function generatePDF() {
+            guardarComprobanteLocal(); // Guardar registro para validez
+
+            const element = document.getElementById('boleta-preview');
+            const docNum = document.getElementById('preview-doc-number').textContent.replace(/\s+/g, '');
+            const clientName = document.getElementById('clientName').value.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            
+            const opt = {
+                margin:       0,
+                filename:     `Grafiplot_${docType}_${docNum}_${clientName || 'cliente'}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2.5, useCORS: true, letterRendering: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).save();
+        }
+
+        // LECTURA REAL DE ARCHIVO XML SUNAT (Conserva serie y correlativo original)
+        function handleXMLUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    try {
+                        const xmlText = e.target.result;
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+
+                        // Analizar Datos Generales de SUNAT
+                        const getTag = (tagName) => {
+                            const elements = xmlDoc.getElementsByTagName(tagName);
+                            return elements.length > 0 ? elements[0].textContent : null;
+                        };
+
+                        // 1. Determinar el Tipo de Documento primero sin alterar números aún
+                        const invoiceType = getTag('cbc:InvoiceTypeCode') || getTag('InvoiceTypeCode');
+                        if (invoiceType === '01') {
+                            setDocumentType('FACTURA', true);
+                        } else if (invoiceType === '03') {
+                            setDocumentType('BOLETA', true);
+                        }
+
+                        // 2. Extraer y escribir la Serie y Correlativo exactamente como vienen en el original
+                        const rawID = getTag('cbc:ID') || getTag('ID');
+                        if (rawID && rawID.includes('-')) {
+                            const parts = rawID.split('-');
+                            document.getElementById('docSerie').value = parts[0].trim();
+                            document.getElementById('docCorrelative').value = parts[1].trim();
+                        }
+
+                        // 3. Extraer Fecha de Emisión
+                        const issueDate = getTag('cbc:IssueDate') || getTag('IssueDate');
+                        if (issueDate) {
+                            document.getElementById('docDate').value = issueDate;
+                        }
+
+                        // 4. Extraer Moneda
+                        const currency = getTag('cbc:DocumentCurrencyCode') || getTag('DocumentCurrencyCode') || 'PEN';
+                        const currencySelect = document.getElementById('docCurrency');
+                        currencySelect.value = currency;
+                        updateCurrencySymbol();
+
+                        // 5. Extraer Cliente
+                        let clientRegName = null;
+                        const regNameElements = xmlDoc.getElementsByTagName('cbc:RegistrationName');
+                        if (regNameElements.length > 1) {
+                            clientRegName = regNameElements[1].textContent;
+                        } else if (regNameElements.length === 1) {
+                            clientRegName = regNameElements[0].textContent;
+                        }
+                        if (clientRegName) {
+                            document.getElementById('clientName').value = clientRegName;
+                        }
+
+                        // Documento de Identidad Cliente
+                        const customerIDElements = xmlDoc.getElementsByTagName('cac:AccountingCustomerParty');
+                        if (customerIDElements.length > 0) {
+                            const idElem = customerIDElements[0].getElementsByTagName('cbc:ID');
+                            if (idElem.length > 0) {
+                                document.getElementById('clientDoc').value = idElem[0].textContent;
+                            }
+                        }
+
+                        // Dirección Cliente (Se guarda en el sistema mas no se dibuja en la boleta)
+                        const addressElements = xmlDoc.getElementsByTagName('cac:RegistrationAddress');
+                        if (addressElements.length > 0) {
+                            const lineElements = addressElements[0].getElementsByTagName('cbc:Line');
+                            if (lineElements.length > 0) {
+                                document.getElementById('clientAddress').value = lineElements[0].textContent;
+                            }
+                        }
+
+                        // 6. Extraer Ítems del XML
+                        const container = document.getElementById('itemsContainer');
+                        container.innerHTML = ''; // Limpiar ítems
+
+                        const lines = xmlDoc.getElementsByTagName('cac:InvoiceLine');
+                        if (lines.length > 0) {
+                            for (let i = 0; i < lines.length; i++) {
+                                const line = lines[i];
+                                
+                                // Cantidad
+                                const qtyElem = line.getElementsByTagName('cbc:InvoicedQuantity')[0];
+                                const qty = qtyElem ? parseFloat(qtyElem.textContent) : 1;
+
+                                // Descripción
+                                const descElem = line.getElementsByTagName('cbc:Description')[0];
+                                const desc = descElem ? descElem.textContent : 'Servicio Importado';
+
+                                // Precio Unitario
+                                const priceElem = line.getElementsByTagName('cbc:PriceAmount')[0];
+                                const price = priceElem ? parseFloat(priceElem.textContent) : 0;
+
+                                addItem(qty, desc, price);
+                            }
+                        } else {
+                            addItem(1, "Servicio Importado de XML", 1.00);
+                        }
+
+                        isImportedXML = true; // Activa modo XML para ocultar datos
+                        switchTab('manual');
+                        updatePreview();
+                        alert("XML SUNAT analizado con éxito. Se importaron los datos exactos del documento original.");
+
+                    } catch (error) {
+                        console.error(error);
+                        alert("Error al leer el archivo XML. Asegúrate de que sea un archivo XML de comprobante electrónico SUNAT válido.");
+                    }
+                };
+
+                reader.readAsText(file);
+            }
+        }
+
+        // SIMULADOR DE DATOS DE PRUEBA (Para demostraciones rápidas)
+        function loadSimulatedData(type) {
+            document.getElementById('itemsContainer').innerHTML = '';
+            
+            if (type === 1) {
+                // Boleta Exonerada de Prueba manteniendo código original
+                setDocumentType('BOLETA', true);
+                document.getElementById('docSerie').value = 'B204';
+                document.getElementById('docCorrelative').value = '00204918';
+                document.getElementById('clientName').value = 'Alonso Vega Ramos';
+                document.getElementById('clientDoc').value = '70854125';
+                document.getElementById('clientAddress').value = 'Jr. San Martín 452, Huánuco';
+                document.getElementById('docCurrency').value = 'PEN';
+                
+                addItem(3, 'Impresión de Planos de Arquitectura A1 en Papel Bond', 15.00);
+                addItem(1, 'Encuadernado y Espiralado Técnico', 25.00);
+                addItem(12, 'Impresión Laser Full Color A4 papel coche', 2.50);
+                
+            } else if (type === 2) {
+                // Factura en Dólares (USD) manteniendo código original
+                setDocumentType('FACTURA', true);
+                document.getElementById('docSerie').value = 'F109';
+                document.getElementById('docCorrelative').value = '00012581';
+                document.getElementById('clientName').value = 'TECNOLOGÍAS DEL PERÚ S.A.C.';
+                document.getElementById('clientDoc').value = '20458712549';
+                document.getElementById('clientAddress').value = 'Av. Primavera 1024, Santiago de Surco, Lima';
+                document.getElementById('docCurrency').value = 'USD'; // Dólares
+                
+                addItem(1, 'Ploteo e Impresión de Gigantografía Corporativa Exterior', 120.00);
+                addItem(2, 'Estructura Metálica Publicitaria Móvil', 150.00);
+            }
+
+            isImportedXML = true; // Activa modo XML para ocultar datos
+            updateCurrencySymbol();
+            switchTab('manual');
+            updatePreview();
+        }
+
+        // BÚSQUEDA DE VALIDEZ EN BASE DE DATOS LOCAL
+        function buscarComprobante() {
+            const query = document.getElementById('searchDocNum').value.trim().toUpperCase();
+            const localDb = JSON.parse(localStorage.getItem('grafiplot_comprobantes') || '{}');
+            const resultBox = document.getElementById('searchResult');
+
+            resultBox.classList.remove('hidden');
+
+            if (localDb[query]) {
+                const data = localDb[query];
+                resultBox.className = "p-4 rounded-lg border border-red-200 bg-red-50 text-xs text-red-900 space-y-2";
+                resultBox.innerHTML = `
+                    <div class="flex items-center gap-1.5 font-bold text-red-800">
+                        <i class="fas fa-check-circle text-base"></i> COMPROBANTE EMITIDO REGISTRADO
+                    </div>
+                    <p class="font-mono"><strong>Número:</strong> ${data.num}</p>
+                    <p><strong>Cliente:</strong> ${data.cliente}</p>
+                    <p><strong>Identificación:</strong> ${data.doc}</p>
+                    <p><strong>Total:</strong> ${data.moneda === 'PEN' ? 'S/' : (data.moneda === 'USD' ? '$' : '€')} ${data.total.toFixed(2)}</p>
+                    <button onclick="cargarParaEditar('${query}')" class="mt-2 bg-brand-600 text-white font-bold py-1 px-2.5 rounded hover:bg-brand-700 transition-colors">
+                        Cargar en Editor
+                    </button>
+                `;
+            } else {
+                resultBox.className = "p-4 rounded-lg border border-red-200 bg-red-50 text-xs text-red-900";
+                resultBox.innerHTML = `
+                    <div class="flex items-center gap-1.5 font-bold text-red-800 mb-1">
+                        <i class="fas fa-times-circle text-base"></i> NO ENCONTRADO EN EMITIDOS
+                    </div>
+                    <p>El comprobante <strong>${query}</strong> no se encuentra registrado en el historial local.</p>
+                `;
+            }
+        }
+
+        // Cargar comprobante recuperado al editor
+        function cargarParaEditar(key) {
+            const localDb = JSON.parse(localStorage.getItem('grafiplot_comprobantes') || '{}');
+            const data = localDb[key];
+            if (!data) return;
+
+            setDocumentType(data.tipo, true);
+            const parts = key.split('-');
+            document.getElementById('docSerie').value = parts[0];
+            document.getElementById('docCorrelative').value = parts[1];
+            document.getElementById('clientName').value = data.cliente;
+            document.getElementById('clientDoc').value = data.doc;
+            document.getElementById('clientAddress').value = data.direccion;
+            document.getElementById('docDate').value = data.fecha;
+            document.getElementById('docCurrency').value = data.moneda;
+
+            document.getElementById('itemsContainer').innerHTML = '';
+            data.items.forEach(it => {
+                addItem(it.qty, it.desc, it.price);
+            });
+
+            isImportedXML = data.isXML === true;
+
+            updateCurrencySymbol();
+            switchTab('manual');
+            updatePreview();
+        }
+
+        // --- Conversión de Números a Letras en Español ---
+        var numeroALetras = (function() {
+            function Unidades(num){
+                switch(num) {
+                    case 1: return "UN";
+                    case 2: return "DOS";
+                    case 3: return "TRES";
+                    case 4: return "CUATRO";
+                    case 5: return "CINCO";
+                    case 6: return "SEIS";
+                    case 7: return "SIETE";
+                    case 8: return "OCHO";
+                    case 9: return "NUEVE";
+                }
+                return "";
+            }
+
+            function Decenas(num){
+                let decena = Math.floor(num/10);
+                let unidad = num - (decena * 10);
+                switch(decena) {
+                    case 1:
+                        switch(unidad) {
+                            case 0: return "DIEZ";
+                            case 1: return "ONCE";
+                            case 2: return "DOCE";
+                            case 3: return "TRECE";
+                            case 4: return "CATORCE";
+                            case 5: return "QUINCE";
+                            default: return "DIECI" + Unidades(unidad);
+                        }
+                    case 2:
+                        switch(unidad) {
+                            case 0: return "VEINTE";
+                            default: return "VEINTI" + Unidades(unidad);
+                        }
+                    case 3: return DecenasY("TREINTA", unidad);
+                    case 4: return DecenasY("CUARENTA", unidad);
+                    case 5: return DecenasY("CINCUENTA", unidad);
+                    case 6: return DecenasY("SESENTA", unidad);
+                    case 7: return DecenasY("SETENTA", unidad);
+                    case 8: return DecenasY("OCHENTA", unidad);
+                    case 9: return DecenasY("NOVENTA", unidad);
+                    case 0: return Unidades(unidad);
+                }
+            }
+
+            function DecenasY(strSin, numUnidades) {
+                if (numUnidades > 0) return strSin + " Y " + Unidades(numUnidades)
+                return strSin;
+            }
+
+            function Centenas(num) {
+                let centenas = Math.floor(num / 100);
+                let decenas = num - (centenas * 100);
+                switch(centenas) {
+                    case 1:
+                        if (decenas > 0) return "CIENTO " + Decenas(decenas);
+                        return "CIEN";
+                    case 2: return "DOSCIENTOS " + Decenas(decenas);
+                    case 3: return "TRESCIENTOS " + Decenas(decenas);
+                    case 4: return "CUATROCIENTOS " + Decenas(decenas);
+                    case 5: return "QUINIENTOS " + Decenas(decenas);
+                    case 6: return "SEISCIENTOS " + Decenas(decenas);
+                    case 7: return "SETECIENTOS " + Decenas(decenas);
+                    case 8: return "OCHOCIENTOS " + Decenas(decenas);
+                    case 9: return "NOVECIENTOS " + Decenas(decenas);
+                }
+                return Decenas(decenas);
+            }
+
+            function Seccion(num, divisor, strSingular, strPlural) {
+                let cientos = Math.floor(num / divisor)
+                let resto = num - (cientos * divisor)
+                let letras = "";
+                if (cientos > 0) {
+                    if (cientos > 1) {
+                        letras = Centenas(cientos) + " " + strPlural;
+                    } else {
+                        letras = strSingular;
+                    }
+                }
+                if (resto > 0) {
+                    letras += "";
+                }
+                return letras;
+            }
+
+            function Miles(num) {
+                let divisor = 1000;
+                let cientos = Math.floor(num / divisor)
+                let resto = num - (cientos * divisor)
+                let strMiles = Seccion(num, divisor, "UN MIL", "MIL");
+                let strCentenas = Centenas(resto);
+                if(strMiles == "") return strCentenas;
+                return strMiles + " " + strCentenas;
+            }
+
+            return function NumeroALetras(num, currency) {
+                currency = currency || {};
+                let data = {
+                    numero: num,
+                    enteros: Math.floor(num),
+                    centavos: (((Math.round(num * 100)) - (Math.floor(num) * 100))),
+                    letrasCentavos: "",
+                    letrasMonedaPlural: currency.plural || "SOLES",
+                    letrasMonedaSingular: currency.singular || "SOL",
+                };
+
+                if (data.centavos > 0) {
+                    let centavosStr = data.centavos.toString().padStart(2, '0');
+                    data.letrasCentavos = `Y ${centavosStr}/100`;
+                } else {
+                    data.letrasCentavos = "Y 00/100";
+                }
+
+                if(data.enteros == 0) return "CERO " + data.letrasCentavos + " " + data.letrasMonedaPlural;
+                if (data.enteros == 1) return Miles(data.enteros) + " " + data.letrasCentavos + " " + data.letrasMonedaSingular;
+                else return Miles(data.enteros) + " " + data.letrasCentavos + " " + data.letrasMonedaPlural;
+            };
+        })();
+
+        // Eventos en vivo para actualización interactiva del editor
+        document.getElementById('clientName').addEventListener('input', updatePreview);
+        document.getElementById('clientDoc').addEventListener('input', updatePreview);
+        document.getElementById('clientAddress').addEventListener('input', updatePreview);
+        document.getElementById('docSerie').addEventListener('input', updatePreview);
+        document.getElementById('docCorrelative').addEventListener('input', updatePreview);
+        document.getElementById('docDate').addEventListener('change', updatePreview);
+    </script>
+</body>
+</html>
